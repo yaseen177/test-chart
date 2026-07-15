@@ -278,6 +278,98 @@
             border-radius: 50%;
         }
 
+        /* --- Mallett Unit (Fixation Disparity) --- */
+        /* Uses red/green anaglyph separation (same principle as the Duochrome test)
+           so it works on any screen with standard red/green glasses - no polarizing
+           filter or special monitor is required. Red channel = one eye, Green = other. */
+        #mallett-chart {
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .mallett-target {
+            position: relative;
+            width: 40vh;
+            height: 40vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Central fusion lock - seen binocularly, keeps the two eyes aligned/fused */
+        .mallett-lock {
+            display: flex;
+            align-items: center;
+            gap: calc(0.6vh * var(--chart-scale-factor));
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            font-size: calc(4vh * var(--chart-scale-factor));
+            color: var(--chart-fg);
+            border: calc(0.25vh * var(--chart-scale-factor)) solid var(--chart-fg);
+            padding: calc(0.5vh * var(--chart-scale-factor)) calc(1.2vh * var(--chart-scale-factor));
+            border-radius: 4px;
+        }
+        /* Positioning wrappers - fixed relative to the lock, offset applied to child by JS */
+        .mallett-v-wrap {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, calc(-50% - (7vh * var(--chart-scale-factor)) - 2vh));
+        }
+        .mallett-h-wrap {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(calc(-50% + (7vh * var(--chart-scale-factor)) + 2vh), -50%);
+        }
+        /* NEW: mirrored wraps for the second pair of strips */
+        .mallett-v-wrap-2 {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, calc(-50% + (7vh * var(--chart-scale-factor)) + 2vh));
+        }
+        .mallett-h-wrap-2 {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(calc(-50% - (7vh * var(--chart-scale-factor)) - 2vh), -50%);
+        }
+        /* Vertical nonius strips - test horizontal fixation disparity */
+        .mallett-vertical-strip {
+            width: calc(0.6vh * var(--chart-scale-factor));
+            height: calc(9vh * var(--chart-scale-factor));
+            transition: transform 0.05s linear;
+        }
+        /* Horizontal nonius strips - test vertical fixation disparity */
+        .mallett-horizontal-strip {
+            width: calc(9vh * var(--chart-scale-factor));
+            height: calc(0.6vh * var(--chart-scale-factor));
+            transition: transform 0.05s linear;
+        }
+        .mallett-red { background-color: #FF0000; }
+        .mallett-green { background-color: #00CC00; }
+        .mallett-readout {
+            position: absolute;
+            bottom: 5vh;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: Arial, sans-serif;
+            font-size: 2vh;
+            color: #ccc;
+            white-space: nowrap;
+        }
+        .mallett-note {
+            position: absolute;
+            top: 4vh;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: Arial, sans-serif;
+            font-size: 1.6vh;
+            color: #888;
+            text-align: center;
+            max-width: 70vw;
+        }
+
         /* --- Indicators (Random Mode, Isolation) --- */
         #random-indicator {
             position: fixed;
@@ -429,6 +521,7 @@
                 <div><kbd>C</kbd> Cross-Cyl Dots</div>
 
                 <div><kbd>M</kbd> Maddox Rod</div>
+                <div><kbd>F</kbd> Mallett Unit (Fixation Disparity)</div>
                 <div><kbd>Z</kbd> Refresh Page</div>
                 <div><kbd>H</kbd> Isolate Row</div>
                 
@@ -436,9 +529,9 @@
                 
                 <div><kbd>A</kbd> Show All (Exit Isolation)</div>
                 <!-- Updated label for Up/Down arrows -->
-                <div><kbd>↑</kbd> <kbd>↓</kbd> Page / Row / Duo / C-Cyl</div>
+                <div><kbd>↑</kbd> <kbd>↓</kbd> Page / Row / Duo / C-Cyl / Mallett-V</div>
                 
-                <div><kbd>←</kbd> <kbd>→</kbd> Row / Letter</div>
+                <div><kbd>←</kbd> <kbd>→</kbd> Row / Letter / Mallett-H</div>
                 
                 <div><kbd>R</kbd> Toggle Random Mode</div>
                 <div><kbd>SPACE</kbd> New Random Chart</div>
@@ -497,6 +590,27 @@
             <div class="m-dot-container">
                  <div class="maddox-dot"></div>
             </div>
+        </div>
+
+        <!-- Mallett Unit - Fixation Disparity Test -->
+        <div id="mallett-chart" class="chart">
+            <div class="mallett-note">Patient wears red/green glasses. Report if either coloured line appears broken or offset from the box.</div>
+            <div class="mallett-target">
+                <div class="mallett-lock">O X O</div>
+                <div class="mallett-v-wrap">
+                    <div class="mallett-vertical-strip mallett-red" id="mallett-v-strip"></div>
+                </div>
+                <div class="mallett-h-wrap">
+                    <div class="mallett-horizontal-strip mallett-green" id="mallett-h-strip"></div>
+                </div>
+                <div class="mallett-v-wrap-2">
+                    <div class="mallett-vertical-strip mallett-green" id="mallett-v-strip-2"></div>
+                </div>
+                <div class="mallett-h-wrap-2">
+                    <div class="mallett-horizontal-strip mallett-red" id="mallett-h-strip-2"></div>
+                </div>
+            </div>
+            <div class="mallett-readout" id="mallett-readout">Horizontal offset: 0.0 &nbsp;|&nbsp; Vertical offset: 0.0</div>
         </div>
 
     </div>
@@ -691,8 +805,12 @@
             duochromeSizeIndex: 1, // NEW: 0=6/15, 1=6/9, 2=6/6
             
             // --- NEW SETTINGS STATE ---
-            viewingDistance: 6.0, // Stored in meters
+            viewingDistance: 3.8, // Stored in meters
             distanceUnits: 'meters', // 'meters' or 'feet'
+
+            // --- NEW: MALLETT UNIT (FIXATION DISPARITY) STATE ---
+            mallettHOffset: 0, // Steps of horizontal offset applied to the vertical (red) nonius strip
+            mallettVOffset: 0, // Steps of vertical offset applied to the horizontal (green) nonius strip
         };
 
         // --- DOM Elements ---
@@ -854,6 +972,54 @@
                 el.style.fontSize = size;
             });
         }
+
+        /**
+         * NEW: Renders the Mallett Unit nonius strips at their current offsets.
+         * The vertical (red) strip is shifted horizontally to reveal/measure
+         * horizontal fixation disparity; the horizontal (green) strip is shifted
+         * vertically to reveal/measure vertical fixation disparity.
+         */
+        const MALLETT_STEP_PX = 8; // Pixels per offset step
+
+        function renderMallett() {
+            const vStrip = document.getElementById('mallett-v-strip');
+            const hStrip = document.getElementById('mallett-h-strip');
+            const vStrip2 = document.getElementById('mallett-v-strip-2'); // NEW
+            const hStrip2 = document.getElementById('mallett-h-strip-2'); // NEW
+            const readout = document.getElementById('mallett-readout');
+            if (!vStrip || !hStrip) return;
+
+            vStrip.style.transform = `translateX(${state.mallettHOffset * MALLETT_STEP_PX}px)`;
+            hStrip.style.transform = `translateY(${state.mallettVOffset * MALLETT_STEP_PX}px)`;
+            if (vStrip2) vStrip2.style.transform = `translateX(${state.mallettHOffset * MALLETT_STEP_PX}px)`;
+            if (hStrip2) hStrip2.style.transform = `translateY(${state.mallettVOffset * MALLETT_STEP_PX}px)`;
+
+            if (readout) {
+                readout.textContent =
+                    `Horizontal offset: ${state.mallettHOffset.toFixed(1)} \u00A0|\u00A0 Vertical offset: ${state.mallettVOffset.toFixed(1)}`;
+            }
+        }
+
+        /**
+         * NEW: Adjusts the Mallett Unit nonius strip offsets
+         * @param {string} axis - 'h' (horizontal/red strip) or 'v' (vertical/green strip)
+         * @param {number} delta - 1 or -1
+         */
+        function changeMallettOffset(axis, delta) {
+            if (state.activeChart !== 'mallett') return;
+
+            if (axis === 'h') {
+                state.mallettHOffset += (delta * 0.5);
+                if (state.mallettHOffset < -10) state.mallettHOffset = -10;
+                if (state.mallettHOffset > 10) state.mallettHOffset = 10;
+            } else {
+                state.mallettVOffset += (delta * 0.5);
+                if (state.mallettVOffset < -10) state.mallettVOffset = -10;
+                if (state.mallettVOffset > 10) state.mallettVOffset = 10;
+            }
+
+            renderMallett();
+        }
         
         // --- CONTROL FUNCTIONS ---
 
@@ -892,12 +1058,17 @@
                         state.crossCylScale = 1.0; // Reset scale
                         renderCrossCyl();
                         break;
+                    case 'mallett': // NEW
+                        state.mallettHOffset = 0; // Reset offsets
+                        state.mallettVOffset = 0;
+                        renderMallett();
+                        break;
                     // Maddox and Welcome are static, no render needed
                 }
             }
 
             // Set background color
-            const shouldInvert = (chartName !== 'maddox-rod' && chartName !== 'duochrome');
+            const shouldInvert = (chartName !== 'maddox-rod' && chartName !== 'duochrome' && chartName !== 'mallett');
             document.body.classList.toggle('invert-colors', shouldInvert);
         }
         
@@ -1247,6 +1418,7 @@
                 case 'numbers': renderChart('numbers', state.numberData, 'letter', true); break;
                 case 'cross-cyl': renderCrossCyl(); break;
                 case 'duochrome': renderDuochrome(); break;
+                case 'mallett': renderMallett(); break; // NEW
             }
         }
         
@@ -1293,6 +1465,10 @@
             
             // Update the CSS custom property
             document.documentElement.style.setProperty('--chart-scale-factor', scaleFactor);
+
+            // FIX: Persist settings to localStorage so calibration survives a page refresh
+            localStorage.setItem('chartDistance', distance);
+            localStorage.setItem('chartUnits', units);
             
             // Close modal and re-render
             closeSettings();
@@ -1333,6 +1509,7 @@
                 case 'D': showChart('duochrome'); break;
                 case 'C': showChart('cross-cyl'); break;
                 case 'M': showChart('maddox-rod'); break; // Corrected from 'maddox'
+                case 'F': showChart('mallett'); break; // NEW: Mallett Unit (Fixation Disparity)
                 case 'Z': location.reload(); break; // Changed to refresh the page
                 case 'ESCAPE': showChart('welcome'); break; // Back to welcome
 
@@ -1352,6 +1529,8 @@
                         changeCrossCylSize(1); // Increase size
                     } else if (state.activeChart === 'duochrome') { // NEW
                         changeDuochromeSize(1); // Increase size
+                    } else if (state.activeChart === 'mallett') { // NEW
+                        changeMallettOffset('v', -1); // Move green strip up
                     } else {
                         navigate('up');
                     }
@@ -1361,12 +1540,26 @@
                         changeCrossCylSize(-1); // Decrease size
                     } else if (state.activeChart === 'duochrome') { // NEW
                         changeDuochromeSize(-1); // Decrease size
+                    } else if (state.activeChart === 'mallett') { // NEW
+                        changeMallettOffset('v', 1); // Move green strip down
                     } else {
                         navigate('down');
                     }
                     break;
-                case 'ARROWLEFT': navigate('left'); break;
-                case 'ARROWRIGHT': navigate('right'); break;
+                case 'ARROWLEFT':
+                    if (state.activeChart === 'mallett') { // NEW
+                        changeMallettOffset('h', -1); // Move red strip left
+                    } else {
+                        navigate('left');
+                    }
+                    break;
+                case 'ARROWRIGHT':
+                    if (state.activeChart === 'mallett') { // NEW
+                        changeMallettOffset('h', 1); // Move red strip right
+                    } else {
+                        navigate('right');
+                    }
+                    break;
                 
             }
         });
