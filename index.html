@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Optometry Chart</title>
+    <!-- We will use Font Awesome for the picture chart icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.cdnfonts.com/css/optician-sans');
+
+        /* --- Base Setup --- */
+        :root {
+            /* DEFAULT: Black background, white text */
+            --chart-bg: #000;
+            --chart-fg: #FFF;
+            
+            /* --- NEW CALIBRATION LOGIC --- */
+            /* 1. This is the unscaled base size (calibrated for 6m) */
+            --font-base-unscaled: 2.5vh; 
+            /* 2. This is the multiplier set by the new Settings modal */
+            --chart-scale-factor: 1.0;
+            
+            /* 3. This is the FINAL scaled size that all charts will use */
+            --font-base: calc(var(--font-base-unscaled) * var(--chart-scale-factor)); 
+
+            /* All these calculations will now scale automatically */
+            --font-6-60: calc(var(--font-base) * 10);   /* 25vh */
+            --font-6-48: calc(var(--font-base) * 8);    /* 20vh */
+            --font-6-45: calc(var(--font-base) * 7.5);  /* 18.75vh */
+            --font-6-36: calc(var(--font-base) * 6);    /* 15vh */
+            --font-6-30: calc(var(--font-base) * 5);    /* 12.5vh */
+            --font-6-24: calc(var(--font-base) * 4);    /* 10vh */
+            --font-6-21: calc(var(--font-base) * 3.5);  /* 8.75vh */
+            --font-6-18: calc(var(--font-base) * 3);    /* 7.5vh */
+            --font-6-15: calc(var(--font-base) * 2.5);  /* 6.25vh */
+            --font-6-12: calc(var(--font-base) * 2);    /* 5vh */
+            --font-6-9: calc(var(--font-base) * 1.5);   /* 3.75vh */
+            --font-6-7-5: calc(var(--font-base) * 1.25);/* 3.125vh */
+            --font-6-6: var(--font-base);               /* 2.5vh */
+            --font-6-4-5: calc(var(--font-base) * 0.75);/* 1.875vh */
+            --font-6-3: calc(var(--font-base) * 0.5);   /* 1.25vh */
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: var(--chart-bg);
+            color: var(--chart-fg);
+            font-family: 'Optician Sans', 'Courier New', monospace; /* Changed to Optician Sans */
+            font-weight: normal; /* Optotype fonts are best at normal weight */
+            overflow: hidden; /* Hide scrollbars */
+            cursor: none; /* Hide the mouse cursor */
+            transition: background-color 0.2s, color 0.2s;
+        }
+        
+        /* --- Inverted Color Scheme (White Background) --- */
+        body.invert-colors {
+            --chart-bg: #FFF;
+            --chart-fg: #000;
+        }
+
+        /* --- Chart Container --- */
+        .chart-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            line-height: 1.1;
+            padding: 2vh 0;
+            box-sizing: border-box; /* Include padding in height */
+        }
+
+        /* --- Chart Pages --- */
+        .chart {
+            display: none; /* All charts hidden by default */
+            width: 100%;
+            height: 100%;
+            flex-direction: column; /* Common property */
+            justify-content: center; /* Common property */
+        }
+        .chart.active {
+            display: flex; /* Show the active chart */
+        }
+
+        /* --- Welcome Screen --- */
+        #welcome-chart { /* Renamed from welcome-screen */
+            font-family: Arial, sans-serif;
+            font-weight: normal;
+            font-size: 2.2vh;
+            color: #ccc;
+            line-height: 1.6;
+            justify-content: center;
+            align-items: center; /* Added for centering */
+        }
+        body.invert-colors #welcome-chart { color: #333; }
+        
+        #welcome-chart h1 {
+            font-size: 5vh;
+            color: #fff;
+            margin: 0;
+        }
+        body.invert-colors #welcome-chart h1 { color: #000; }
+
+        #welcome-chart .key-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5vh 3vw;
+            margin-top: 4vh;
+        }
+        #welcome-chart .key-grid div {
+            text-align: left;
+        }
+        #welcome-chart kbd {
+            display: inline-block;
+            min-width: 2.5vw;
+            padding: 0.5vh 1vw;
+            font-family: monospace;
+            font-size: 2vh;
+            font-weight: bold;
+            text-align: center;
+            background-color: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            margin-right: 1vw;
+        }
+        body.invert-colors #welcome-chart kbd {
+            background-color: #eee;
+            border-color: #ccc;
+            color: #000;
+        }
+
+
+        /* --- Snellen, Numbers, Pictures --- */
+        #snellen-chart, #numbers-chart, #pictures-chart {
+            justify-content: space-around; /* Override default center */
+            align-items: center;
+        }
+        
+        .chart-row {
+            display: flex;
+            /* Changed from 'center' to 'space-around' to fill the width */
+            justify-content: space-around;
+            align-items: center;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            position: relative; /* Make row the reference for absolute positioning */
+        }
+
+        .chart-letter, .chart-icon {
+            padding: 0 0.25em;
+            transition: all 0.1s ease-in-out;
+        }
+        
+        .chart-icon {
+            font-size: 0.9em; /* Icons can be slightly larger */
+        }
+
+        /* Acuity Font Sizes */
+        .acuity-6-60 { font-size: var(--font-6-60); }
+        .acuity-6-48 { font-size: var(--font-6-48); }
+        .acuity-6-45 { font-size: var(--font-6-45); }
+        .acuity-6-36 { font-size: var(--font-6-36); }
+        .acuity-6-30 { font-size: var(--font-6-30); }
+        .acuity-6-24 { font-size: var(--font-6-24); }
+        .acuity-6-21 { font-size: var(--font-6-21); }
+        .acuity-6-18 { font-size: var(--font-6-18); }
+        .acuity-6-15 { font-size: var(--font-6-15); }
+        .acuity-6-12 { font-size: var(--font-6-12); }
+        .acuity-6-9 { font-size: var(--font-6-9); }
+        .acuity-6-7-5 { font-size: var(--font-6-7-5); }
+        .acuity-6-6 { font-size: var(--font-6-6); }
+        .acuity-6-4-5 { font-size: var(--font-6-4-5); }
+        .acuity-6-3 { font-size: var(--font-6-3); }
+        
+        /* Acuity labels (optional, but good for context) */
+        .acuity-label {
+            font-family: Arial, sans-serif;
+            font-weight: normal;
+            font-size: 1.5vh;
+            color: #AAA; /* Light grey on black */
+            position: absolute;
+            left: 2vw; /* 2% from the left edge */
+            top: 50%; /* Center vertically */
+            transform: translateY(-50%);
+            pointer-events: none; /* Make it unclickable */
+        }
+        body.invert-colors .acuity-label {
+            color: #777; /* Darker grey on white */
+        }
+
+        /* --- ETDRS Chart --- */
+        #etdrs-chart {
+            align-items: center;
+        }
+        #etdrs-chart .chart-row {
+            letter-spacing: 0.5em; /* ETDRS has specific spacing */
+            justify-content: center; /* Override space-around, center ETDRS rows */
+        }
+        .etdrs-line {
+            width: 40%;
+            border-color: #555;
+            margin: 0.5vh 0;
+        }
+        body.invert-colors .etdrs-line {
+            border-color: #ccc;
+        }
+
+        /* --- Duochrome Chart --- */
+        #duochrome-chart {
+            flex-direction: row; /* Override default column */
+        }
+        .duo-panel {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #000;
+            /* font-size removed, will be set by JS */
+        }
+        .duo-left { background-color: #FF0000; /* Bright Red */ }
+        .duo-right { background-color: #00CC00; /* Bright Green */ }
+        .verhoeff-ring {
+            width: 20vh;
+            height: 20vh;
+            margin-bottom: 3vh;
+        }
+        .duo-text {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            line-height: 1.2;
+            letter-spacing: 0.25em;
+            transition: font-size 0.1s ease-in-out; /* Smooth size change */
+        }
+
+        /* --- Cross Cyl Chart --- */
+        #cross-cyl-chart {
+            position: relative; /* Container for absolute positioned dots */
+            justify-content: center; /* Keep this to center the whole chart */
+            align-items: center;
+        }
+        .cross-cyl-dot {
+            background-color: var(--chart-fg);
+            border-radius: 50%;
+            position: absolute; /* Dots are now placed absolutely */
+            /* Width and height set by JS */
+            /* transform: translate(-50%, -50%) will be set by JS */
+        }
+
+        /* --- Maddox Rod Chart --- */
+        #maddox-rod-chart {
+            justify-content: center;
+            align-items: center;
+        }
+        .m-dot-container {
+            display: flex;
+            justify-content: center; /* Center horizontally */
+            align-items: center;   /* Center vertically */
+            width: 100%;
+            height: 100%;
+        }
+        .maddox-dot {
+            width: 3vh;
+            height: 3vh;
+            background-color: var(--chart-fg);
+            border-radius: 50%;
+        }
+
+        /* --- Indicators (Random Mode, Isolation) --- */
+        #random-indicator {
+            position: fixed;
+            top: 2vh;
+            right: 2vw;
+            font-size: 3vh;
+            font-family: Arial, sans-serif;
+            color: #FF0000; /* Red 'R' */
+            display: none; /* Hidden by default */
+        }
+        #random-indicator.active {
+            display: block;
+        }
+        
+        /* --- Isolation & Navigation Highlighting --- */
+        .chart-row.isolated,
+        .chart-letter.isolated,
+        .chart-icon.isolated { /* Added .chart-icon.isolated */
+            visibility: hidden;
+        }
+
+        .chart-row.active-row,
+        .chart-letter.active-letter,
+        .chart-icon.active-letter { /* Added .chart-icon.active-letter */
+            visibility: visible;
+            /* background-color removed */
+            /* outline removed */
+            border-radius: 5px;
+        }
+        
+        /* When in row mode, show all letters in the active row */
+        .isolation-mode-row .chart-row.active-row .chart-letter,
+        .isolation-mode-row .chart-row.active-row .chart-icon { /* Added .chart-icon */
+            visibility: visible;
+        }
+        
+        /* When in col mode, show only the active letter in each row */
+        .isolation-mode-column .chart-letter,
+        .isolation-mode-column .chart-icon { /* Added .chart-icon */
+            visibility: hidden;
+        }
+        .isolation-mode-column .chart-letter.active-col,
+        .isolation-mode-column .chart-icon.active-col { /* Added .chart-icon.active-col */
+            visibility: visible;
+            /* background-color removed */
+            /* outline removed */
+        }
+
+        /* --- NEW: Settings Modal CSS --- */
+        #settings-modal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7); /* Dark overlay */
+            font-family: Arial, sans-serif;
+            color: #333;
+            cursor: auto; /* Show cursor on overlay */
+        }
+        .settings-box {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 25px 35px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .settings-box h2 {
+            margin-top: 0;
+            font-size: 28px;
+        }
+        .settings-box .form-group {
+            margin: 20px 0;
+        }
+        .settings-box label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .settings-box input[type="number"],
+        .settings-box select {
+            width: 40%;
+            padding: 10px;
+            font-size: 18px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box; /* Fixes padding issue */
+            cursor: text; /* Show text cursor on input */
+        }
+        .settings-box select {
+            width: 58%; /* Adjust width to fit */
+            margin-left: 2%;
+        }
+        .settings-box .explanation {
+            font-size: 14px;
+            color: #555;
+            margin-top: 10px;
+        }
+        .settings-box .buttons {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 25px;
+        }
+        .settings-box button {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        #settings-close {
+            background-color: #eee;
+            color: #333;
+        }
+        #settings-save {
+            background-color: #007bff;
+            color: white;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="random-indicator">R</div>
+
+    <!-- 
+      This is the main container where all charts will be rendered by JavaScript.
+    -->
+    <div id="chart-container">
+
+        <!-- Welcome / Instructions Screen -->
+        <div id="welcome-chart" class="chart welcome-container"> <!-- ID was welcome-screen -->
+            <h1>Digital Test Chart</h1>
+            <div class="key-grid">
+                <div><kbd>S</kbd> Snellen Chart</div>
+                <div><kbd>Q</kbd> ETDRS Chart</div>
+                <div><kbd>P</kbd> Picture Chart</div>
+                
+                <div><kbd>N</kbd> Number Chart</div>
+                <div><kbd>D</kbd> Duochrome Test</div>
+                <div><kbd>C</kbd> Cross-Cyl Dots</div>
+
+                <div><kbd>M</kbd> Maddox Rod</div>
+                <div><kbd>Z</kbd> Refresh Page</div>
+                <div><kbd>H</kbd> Isolate Row</div>
+                
+                <div><kbd>I</kbd> <kbd>V</kbd> Isolate Letter/Col</div>
+                
+                <div><kbd>A</kbd> Show All (Exit Isolation)</div>
+                <!-- Updated label for Up/Down arrows -->
+                <div><kbd>↑</kbd> <kbd>↓</kbd> Page / Row / Duo / C-Cyl</div>
+                
+                <div><kbd>←</kbd> <kbd>→</kbd> Row / Letter</div>
+                
+                <div><kbd>R</kbd> Toggle Random Mode</div>
+                <div><kbd>SPACE</kbd> New Random Chart</div>
+                <div><kbd>Esc</kbd> Welcome Screen</div>
+                <div><kbd>Shift</kbd>+<kbd>X</kbd> Open Settings</div> <!-- NEW -->
+            </div>
+        </div>
+
+        <!-- Snellen Chart -->
+        <div id="snellen-chart" class="chart"></div>
+
+        <!-- ETDRS Chart -->
+        <div id="etdrs-chart" class="chart"></div>
+
+        <!-- Picture Chart -->
+        <div id="pictures-chart" class="chart"></div> <!-- ID was picture-chart -->
+
+        <!-- Number Chart -->
+        <div id="numbers-chart" class="chart"></div> <!-- ID was number-chart -->
+
+        <!-- Duochrome Chart -->
+        <div id="duochrome-chart" class="chart"> <!-- classd was class -->
+            <div class="duo-panel duo-left">
+                <!-- Changed to two circles -->
+                <svg class="verhoeff-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" stroke="#000" stroke-width="4" fill="none"/>
+                    <circle cx="50" cy="50" r="25" stroke="#000" stroke-width="4" fill="none"/>
+                </svg>
+                <!-- This text div will now be sized by JS -->
+                <div class="duo-text">
+                    <span>9</span>
+                    <span>3 8</span>
+                    <span>2 5 4</span>
+                </div>
+            </div>
+            <div class="duo-panel duo-right">
+                <!-- Changed to two circles -->
+                <svg class="verhoeff-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" stroke="#000" stroke-width="4" fill="none"/>
+                    <circle cx="50" cy="50" r="25" stroke="#000" stroke-width="4" fill="none"/>
+                </svg>
+                <!-- This text div will now be sized by JS -->
+                <div class="duo-text">
+                    <span>9</span>
+                    <span>3 8</span>
+                    <span>2 5 4</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cross-Cyl Chart -->
+        <div id="cross-cyl-chart" class="chart"></div>
+        
+        <!-- Maddox Rod Chart -->
+        <div id="maddox-rod-chart" classall="chart"> <!-- classd was class -->
+            <div class="m-dot-container">
+                 <div class="maddox-dot"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- NEW: Settings Modal HTML -->
+    <!-- This is placed outside the chart-container so it can overlay everything -->
+    <div id="settings-modal">
+        <div class="settings-box">
+            <h2>Settings</h2>
+            <div class="form-group">
+                <label for="distance">Viewing Distance</label>
+                <input type="number" id="distance" step="0.1" min="1">
+                <select id="distance-units">
+                    <option value="meters">meters</option>
+                    <option value="feet">feet</option>
+                </select>
+                <p class="explanation">
+                    Standard calibration is 6 meters (or 20 feet).
+                    Changing this will scale the chart relative to the 6m standard.
+                </p>
+            </div>
+            <div class="buttons">
+                <button id="settings-close">Close</button>
+                <button id="settings-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- DATA DEFINITIONS ---
+
+        // Helper function to shuffle an array
+        const shuffleArray = (array) => {
+            let newArr = [...array]; // Create a copy
+            for (let i = newArr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newArr[i], newArr[j]] = [newArr[j], newArr[i]]; // Swap
+            }
+            return newArr;
+        };
+        
+        // Standard Sloan/Snellen Optotypes
+        const SNELLEN_OPTOTYPES = ['C', 'D', 'E', 'F', 'L', 'O', 'P', 'T', 'Z'];
+        // ETDRS Optotypes (Sloan, no 'E')
+        const ETDRS_OPTOTYPES = ['C', 'D', 'H', 'K', 'N', 'O', 'R', 'S', 'V', 'Z'];
+        // Numbers
+        const NUMBER_OPTOTYPES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        // Pictures (Font Awesome 5 Free solid icons)
+        const PICTURE_OPTOTYPES = ['fa-car', 'fa-home', 'fa-sun', 'fa-ship', 'fa-dove', 'fa-apple-alt', 'fa-hat-cowboy', 'fa-glasses', 'fa-star', 'fa-square'];
+
+        // --- NEW PAGED DATA STRUCTURES ---
+        
+        // Page 1: 6/60
+        // Page 2: 6/48, 6/36
+        // Page 3: 6/30, 6/24
+        // Page 4: 6/21, 6/18, 6/15
+        // Page 5: 6/12, 6/9, 6/7.5
+        // Page 6: 6/6, 6/4.5, 6/3
+
+        const snellenPages = [
+            [ // Page 1
+                { acuity: '6/60', letters: ['E'] }
+            ],
+            [ // Page 2
+                { acuity: '6/48', letters: ['F', 'P'] },
+                { acuity: '6/36', letters: ['T', 'O'] }
+            ],
+            [ // Page 3
+                { acuity: '6/30', letters: ['L', 'P', 'E'] },
+                { acuity: '6/24', letters: ['D', 'C', 'F'] }
+            ],
+            [ // Page 4
+                { acuity: '6/21', letters: ['E', 'D', 'F', 'C', 'Z'] },
+                { acuity: '6/18', letters: ['P', 'T', 'L', 'O', 'E'] },
+                { acuity: '6/15', letters: ['C', 'Z', 'F', 'D', 'P'] }
+            ],
+            [ // Page 5
+                { acuity: '6/12', letters: ['P', 'E', 'C', 'F', 'D'] },
+                { acuity: '6/9', letters: ['E', 'L', 'O', 'P', 'Z'] },
+                { acuity: '6/7.5', letters: ['D', 'E', 'F', 'P', 'O'] }
+            ],
+            [ // Page 6
+                { acuity: '6/6', letters: ['L', 'T', 'F', 'P', 'H'] },
+                { acuity: '6/4.5', letters: ['P', 'Z', 'D', 'T', 'E'] },
+                { acuity: '6/3', letters: ['F', 'E', 'L', 'O', 'P'] }
+            ]
+        ];
+
+        const numberPages = [
+            [ // Page 1
+                { acuity: '6/60', letters: ['8'] }
+            ],
+            [ // Page 2
+                { acuity: '6/48', letters: ['3', '5'] },
+                { acuity: '6/36', letters: ['6', '2'] }
+            ],
+            [ // Page 3
+                { acuity: '6/30', letters: ['4', '9', '7'] },
+                { acuity: '6/24', letters: ['1', '8', '5'] }
+            ],
+            [ // Page 4
+                { acuity: '6/21', letters: ['3', '6', '9', '2', '4'] },
+                { acuity: '6/18', letters: ['7', '5', '8', '1', '3'] },
+                { acuity: '6/15', letters: ['2', '4', '6', '9', '7'] }
+            ],
+            [ // Page 5
+                { acuity: '6/12', letters: ['5', '1', '3', '8', '4'] },
+                { acuity: '6/9', letters: ['9', '7', '2', '6', '1'] },
+                { acuity: '6/7.5', letters: ['4', '8', '3', '9', '7'] }
+            ],
+            [ // Page 6
+                { acuity: '6/6', letters: ['1', '5', '6', '2', '8'] },
+                { acuity: '6/4.5', letters: ['8', '2', '7', '4', '9'] },
+                { acuity: '6/3', letters: ['3', '9', '1', '5', '6'] }
+            ]
+        ];
+
+        const picturePages = [
+            [ // Page 1
+                { acuity: '6/60', letters: ['fa-home'] }
+            ],
+            [ // Page 2
+                { acuity: '6/48', letters: ['fa-car', 'fa-sun'] },
+                { acuity: '6/36', letters: ['fa-ship', 'fa-dove'] }
+            ],
+            [ // Page 3
+                { acuity: '6/30', letters: ['fa-apple-alt', 'fa-hat-cowboy', 'fa-glasses'] },
+                { acuity: '6/24', letters: ['fa-star', 'fa-square', 'fa-car'] }
+            ],
+            [ // Page 4
+                { acuity: '6/21', letters: ['fa-home', 'fa-sun', 'fa-ship', 'fa-dove', 'fa-apple-alt'] },
+                { acuity: '6/18', letters: ['fa-hat-cowboy', 'fa-glasses', 'fa-star', 'fa-square', 'fa-car'] },
+                { acuity: '6/15', letters: ['fa-sun', 'fa-ship', 'fa-home', 'fa-apple-alt', 'fa-dove'] }
+            ],
+            [ // Page 5
+                { acuity: '6/12', letters: ['fa-glasses', 'fa-car', 'fa-star', 'fa-hat-cowboy', 'fa-square'] },
+                { acuity: '6/9', letters: ['fa-home', 'fa-sun', 'fa-ship', 'fa-dove', 'fa-apple-alt'] },
+                { acuity: '6/7.5', letters: ['fa-star', 'fa-square', 'fa-car', 'fa-hat-cowboy', 'fa-home'] }
+            ],
+            [ // Page 6
+                { acuity: '6/6', letters: ['fa-ship', 'fa-dove', 'fa-apple-alt', 'fa-glasses', 'fa-star'] },
+                { acuity: '6/4.5', letters: ['fa-car', 'fa-hat-cowboy', 'fa-home', 'fa-sun', 'fa-ship'] },
+                { acuity: '6/3', letters: ['fa-apple-alt', 'fa-glasses', 'fa-star', 'fa-square', 'fa-car'] }
+            ]
+        ];
+
+        // --- Flat ETDRS Data ---
+        const etdrsDefault = [
+            { acuity: '6/45', letters: ['N', 'C', 'K', 'Z', 'R'] },
+            { acuity: '6/36', letters: ['D', 'S', 'R', 'H', 'O'] },
+            { acuity: '6/30', letters: ['K', 'D', 'N', 'V', 'C'] },
+            { acuity: '6/24', letters: ['Z', 'S', 'O', 'K', 'H'] },
+            { acuity: '6/18', letters: ['V', 'H', 'S', 'D', 'N'] },
+            { acuity: '6/15', letters: ['R', 'K', 'C', 'V', 'O'] },
+            { acuity: '6/12', letters: ['C', 'Z', 'H', 'N', 'R'], line: true }, // Add line
+            { acuity: '6/9', letters: ['O', 'V', 'S', 'K', 'D'] },
+            { acuity: '6/7.5', letters: ['H', 'N', 'R', 'D', 'C'] },
+            { acuity: '6/6', letters: ['S', 'V', 'D', 'H', 'O'], line: true }, // Add line
+            { acuity: '6/4.5', letters: ['R', 'H', 'K', 'D', 'N'] }
+        ];
+
+        // Store default copies for resetting random mode
+        const snellenPagesDefault = JSON.parse(JSON.stringify(snellenPages));
+        const numberPagesDefault = JSON.parse(JSON.stringify(numberPages));
+        const picturePagesDefault = JSON.parse(JSON.stringify(picturePages));
+
+        // --- NEW: Duochrome Sizing ---
+        const DUOCHROME_SIZES = [
+            'var(--font-6-15)', // Index 0
+            'var(--font-6-9)',  // Index 1 (default)
+            'var(--font-6-6)'   // Index 2
+        ];
+
+
+        // --- APPLICATION STATE ---
+        let state = {
+            activeChart: 'welcome', // 'welcome', 'snellen', 'etdrs', 'pictures', 'numbers', 'duochrome', 'cross-cyl', 'maddox'
+            isRandomMode: false,
+            isolationMode: 'all', // 'all', 'row', 'column', 'single'
+            activePage: 0, // For paged charts
+            activeRow: 0,
+            activeCol: 0,
+            
+            // Store the current *data* being rendered
+            snellenData: JSON.parse(JSON.stringify(snellenPages)),
+            etdrsData: JSON.parse(JSON.stringify(etdrsDefault)),
+            pictureData: JSON.parse(JSON.stringify(picturePages)),
+            numberData: JSON.parse(JSON.stringify(numberPages)),
+            
+            crossCylScale: 1.0, // Scale for the cross-cyl pattern
+            duochromeSizeIndex: 1, // NEW: 0=6/15, 1=6/9, 2=6/6
+            
+            // --- NEW SETTINGS STATE ---
+            viewingDistance: 6.0, // Stored in meters
+            distanceUnits: 'meters', // 'meters' or 'feet'
+        };
+
+        // --- DOM Elements ---
+        const chartContainer = document.getElementById('chart-container');
+        const randomIndicator = document.getElementById('random-indicator');
+        
+        // --- NEW: Settings Modal DOM Elements ---
+        const settingsModal = document.getElementById('settings-modal');
+        const distanceInput = document.getElementById('distance');
+        const unitsInput = document.getElementById('distance-units');
+
+        
+        // --- RENDER FUNCTIONS ---
+        
+        /**
+         * Generic function to render a chart (Snellen, ETDRS, Numbers, Pictures)
+         * @param {string} chartId - The ID of the chart to render (e.g., 'snellen')
+         * @param {Array} chartData - The data array (e.g., state.snellenData)
+         * @param {string} [renderType='letter'] - 'letter' or 'icon'
+         * @param {boolean} [isPaged=false] - Whether the chart uses the paging system
+         */
+        function renderChart(chartId, chartData, renderType = 'letter', isPaged = false) {
+            const chartElement = document.getElementById(`${chartId}-chart`);
+            if (!chartElement) return;
+
+            // Clear previous content
+            chartElement.innerHTML = '';
+            
+            // Add isolation mode class to parent
+            chartContainer.className = `chart-container isolation-mode-${state.isolationMode}`;
+            
+            let rowsToRender;
+            if (isPaged) {
+                // Ensure page index is valid
+                if (state.activePage >= chartData.length) state.activePage = chartData.length - 1;
+                if (state.activePage < 0) state.activePage = 0;
+                rowsToRender = chartData[state.activePage];
+            } else {
+                rowsToRender = chartData;
+            }
+
+            rowsToRender.forEach((row, rowIndex) => {
+                // Create the row
+                const rowElement = document.createElement('div');
+                rowElement.className = 'chart-row';
+                
+                // Add acuity class for sizing
+                // We must replace both '/' and '.' to match the CSS classes
+                const acuityClass = `acuity-${row.acuity.replace('/', '-').replace('.', '-')}`;
+                rowElement.classList.add(acuityClass);
+
+                // Add acuity label
+                const labelElement = document.createElement('div');
+                labelElement.className = 'acuity-label';
+                labelElement.textContent = row.acuity.split('/')[1]; // Get "60" from "6/60"
+                rowElement.appendChild(labelElement);
+
+                // Add active/isolated classes for navigation
+                if (rowIndex === state.activeRow) {
+                    rowElement.classList.add('active-row');
+                }
+                if (state.isolationMode === 'row' && rowIndex !== state.activeRow) {
+                    rowElement.classList.add('isolated');
+                }
+                
+                // Add ETDRS line if present
+                if (row.line) {
+                    const lineElement = document.createElement('hr');
+                    lineElement.className = 'etdrs-line';
+                    chartElement.appendChild(lineElement);
+                }
+
+                row.letters.forEach((letter, colIndex) => {
+                    let letterElement;
+                    if (renderType === 'icon') {
+                        letterElement = document.createElement('i');
+                        letterElement.className = `chart-icon fas ${letter}`;
+                    } else {
+                        letterElement = document.createElement('div');
+                        letterElement.className = 'chart-letter';
+                        letterElement.textContent = letter;
+                    }
+                    
+                    // Handle column/single isolation
+                    if (colIndex === state.activeCol) {
+                        letterElement.classList.add('active-col');
+                    }
+                    if (state.isolationMode === 'single') {
+                        if (rowIndex !== state.activeRow || colIndex !== state.activeCol) {
+                            letterElement.classList.add('isolated');
+                        }
+                    }
+                    
+                    rowElement.appendChild(letterElement);
+                });
+                
+                chartElement.appendChild(rowElement);
+            });
+        }
+        
+        function renderCrossCyl() {
+            const chartElement = document.getElementById('cross-cyl-chart');
+            chartElement.innerHTML = ''; // Clear
+            
+            // Base values for the pattern (in vh units)
+            const baseDotSize = 2.4; // 2.0vh -> 2.4vh (20% thicker)
+            const baseInnerRadius = 6.0; // 6.0vh
+            const baseOuterRadius = 12.0; // 12.0vh
+
+            // Apply the current scale
+            const scale = state.crossCylScale;
+            const dotSize = baseDotSize * scale;
+            const innerRadius = baseInnerRadius * scale;
+            const outerRadius = baseOuterRadius * scale;
+
+            const numInner = 7; // 1 center + 6 inner
+            const numOuter = 13;
+            const pi = Math.PI;
+
+            // Function to create a single dot
+            const createDot = (x_vh, y_vh) => {
+                const dot = document.createElement('div');
+                dot.className = 'cross-cyl-dot';
+                dot.style.width = `${dotSize}vh`;
+                dot.style.height = `${dotSize}vh`;
+                dot.style.left = `calc(50% + ${x_vh}vh)`;
+                dot.style.top = `calc(50% + ${y_vh}vh)`;
+                dot.style.transform = 'translate(-50%, -50%)'; // Center the dot on its coordinate
+                chartElement.appendChild(dot);
+            };
+
+            // 1. Create Center Dot
+            createDot(0, 0);
+
+            // 2. Create Inner Ring (6 dots)
+            for (let i = 0; i < (numInner - 1); i++) {
+                const angle = (i / (numInner - 1)) * 2 * pi; // Angle for 6 dots
+                const x = Math.cos(angle) * innerRadius;
+                const y = Math.sin(angle) * innerRadius;
+                createDot(x, y);
+            }
+            
+            // 3. Create Outer Ring (13 dots)
+            for (let i = 0; i < numOuter; i++) {
+                const angle = (i / numOuter) * 2 * pi; // Angle for 13 dots
+                const x = Math.cos(angle) * outerRadius;
+                const y = Math.sin(angle) * outerRadius;
+                createDot(x, y);
+            }
+        }
+
+        /**
+         * NEW: Renders the Duochrome numbers at the correct size
+         */
+        function renderDuochrome() {
+            const size = DUOCHROME_SIZES[state.duochromeSizeIndex];
+            const textElements = document.querySelectorAll('.duo-text');
+            textElements.forEach(el => {
+                el.style.fontSize = size;
+            });
+        }
+        
+        // --- CONTROL FUNCTIONS ---
+
+        /**
+         * Switches the active chart view
+         * @param {string} chartName - The name of the chart to show (e.g., 'snellen')
+         */
+        function showChart(chartName) {
+            state.activeChart = chartName; // Set state immediately
+            state.activePage = 0;
+            state.activeRow = 0;
+            state.activeCol = 0;
+            state.isolationMode = 'all';
+
+            // Hide all charts by removing the active class
+            document.querySelectorAll('.chart').forEach(c => {
+                c.classList.remove('active');
+            });
+
+            // Show the selected chart by adding the active class
+            const chartElement = document.getElementById(chartName + '-chart');
+            if (chartElement) {
+                chartElement.classList.add('active');
+                
+                // Call render function for dynamic charts
+                switch(chartName) {
+                    case 'snellen': renderChart('snellen', state.snellenData, 'letter', true); break;
+                    case 'etdrs': renderChart('etdrs', state.etdrsData, 'letter', false); break;
+                    case 'pictures': renderChart('pictures', state.pictureData, 'icon', true); break;
+                    case 'numbers': renderChart('numbers', state.numberData, 'letter', true); break;
+                    case 'duochrome':
+                        state.duochromeSizeIndex = 1; // Default to 6/9
+                        renderDuochrome();
+                        break;
+                    case 'cross-cyl':
+                        state.crossCylScale = 1.0; // Reset scale
+                        renderCrossCyl();
+                        break;
+                    // Maddox and Welcome are static, no render needed
+                }
+            }
+
+            // Set background color
+            const shouldInvert = (chartName !== 'maddox-rod' && chartName !== 'duochrome');
+            document.body.classList.toggle('invert-colors', shouldInvert);
+        }
+        
+        
+        /**
+         * Toggles random mode on and off
+         */
+        function toggleRandom() {
+            state.isRandomMode = !state.isRandomMode;
+            randomIndicator.classList.toggle('active', state.isRandomMode);
+
+            if (!state.isRandomMode) {
+                // If turning off, reset all charts to default
+                state.snellenData = JSON.parse(JSON.stringify(snellenPagesDefault));
+                state.etdrsData = JSON.parse(JSON.stringify(etdrsDefault));
+                state.pictureData = JSON.parse(JSON.stringify(picturePagesDefault));
+                state.numberData = JSON.parse(JSON.stringify(numberPagesDefault));
+            }
+            
+            // Re-render the current chart
+            rerenderCurrentChart();
+        }
+
+        /**
+         * Generates a new random chart set
+         */
+        function randomizeChart() {
+            if (!state.isRandomMode) return;
+            
+            switch(state.activeChart) {
+                case 'snellen':
+                    state.snellenData = state.snellenData.map(page => // map over pages
+                        page.map(row => ({ // map over rows in page
+                            ...row,
+                            letters: shuffleArray(SNELLEN_OPTOTYPES).slice(0, row.letters.length)
+                        }))
+                    );
+                    renderChart('snellen', state.snellenData, 'letter', true);
+                    break;
+                case 'etdrs':
+                    state.etdrsData = state.etdrsData.map(row => ({
+                        ...row,
+                        letters: shuffleArray(ETDRS_OPTOTYPES).slice(0, 5)
+                    }));
+                    renderChart('etdrs', state.etdrsData, 'letter', false);
+                    break;
+                case 'pictures':
+                    state.pictureData = state.pictureData.map(page => // map over pages
+                        page.map(row => ({ // map over rows in page
+                            ...row,
+                            letters: shuffleArray(PICTURE_OPTOTYPES).slice(0, row.letters.length)
+                        }))
+                    );
+                    renderChart('pictures', state.pictureData, 'icon', true);
+                    break;
+                case 'numbers':
+                    state.numberData = state.numberData.map(page => // map over pages
+                        page.map(row => ({ // map over rows in page
+                            ...row,
+                            letters: shuffleArray(NUMBER_OPTOTYPES).slice(0, row.letters.length)
+                        }))
+                    );
+                    renderChart('numbers', state.numberData, 'letter', true);
+                    break;
+            }
+        }
+
+        /**
+         * Sets the isolation mode
+         * @param {string} mode - 'all', 'row', 'column', 'single'
+         */
+        function setIsolationMode(mode) {
+            state.isolationMode = mode;
+            rerenderCurrentChart();
+        }
+        
+        /**
+         * Handles navigation with arrow keys
+         * @param {string} direction - 'up', 'down', 'left', 'right'
+         */
+        function navigate(direction) {
+            let data;
+            let isPaged = false;
+            
+            switch(state.activeChart) {
+                case 'snellen': data = state.snellenData; isPaged = true; break;
+                case 'numbers': data = state.numberData; isPaged = true; break;
+                case 'pictures': data = state.pictureData; isPaged = true; break;
+                case 'etdrs': data = state.etdrsData; isPaged = false; break;
+                default: return; // No navigation on other charts
+            }
+            
+            if (isPaged) {
+                // --- Paged Chart Navigation (Snellen, Numbers, Pictures) ---
+                const maxPages = data.length;
+                
+                switch(direction) {
+                    case 'up':
+                        if (state.isolationMode === 'single' || state.isolationMode === 'column') {
+                            // Try to move up a row
+                            if (state.activeRow > 0) {
+                                state.activeRow--;
+                            } else {
+                                // At top row, try to move up a page
+                                if (state.activePage > 0) {
+                                    state.activePage--;
+                                    // Go to the *last* row of the new page
+                                    state.activeRow = data[state.activePage].length - 1;
+                                }
+                            }
+                            // Don't reset activeCol
+                        } else if (state.isolationMode === 'row') {
+                            // In row mode, Up arrow moves UP a ROW, wrapping pages
+                            state.activeRow--;
+                            if (state.activeRow < 0) {
+                                // At top row, try to move up a page
+                                if (state.activePage > 0) {
+                                    state.activePage--;
+                                    state.activeRow = data[state.activePage].length - 1; // Go to last row
+                                } else {
+                                    state.activeRow = 0; // Stop at top
+                                }
+                            }
+                            state.activeCol = 0; // Reset col when changing row
+                        } else if (state.isolationMode === 'all') {
+                            // In all mode, Up arrow moves UP a PAGE
+                            if (state.activePage > 0) {
+                                state.activePage--;
+                            }
+                            // Reset row/col for the new page
+                            state.activeRow = 0;
+                            state.activeCol = 0;
+                        }
+                        break;
+                    case 'down':
+                        if (state.isolationMode === 'single' || state.isolationMode === 'column') {
+                            const rowsOnCurrentPage = data[state.activePage] || [];
+                            const maxRows = rowsOnCurrentPage.length;
+                            
+                            // Try to move down a row
+                            if (state.activeRow < maxRows - 1) {
+                                state.activeRow++;
+                            } else {
+                                // At bottom row, try to move down a page
+                                if (state.activePage < maxPages - 1) {
+                                    state.activePage++;
+                                    // Go to the *first* row of the new page
+                                    state.activeRow = 0;
+                                }
+                            }
+                            // Don't reset activeCol
+                        } else if (state.isolationMode === 'row') {
+                            // In row mode, Down arrow moves DOWN a ROW, wrapping pages
+                            const rowsOnCurrentPage = data[state.activePage] || [];
+                            const maxRows = rowsOnCurrentPage.length;
+                            state.activeRow++;
+                            if (state.activeRow >= maxRows) {
+                                // At bottom row, try to move down a page
+                                if (state.activePage < maxPages - 1) {
+                                    state.activePage++;
+                                    state.activeRow = 0; // Go to first row
+                                } else {
+                                    state.activeRow = maxRows - 1; // Stop at bottom
+                                }
+                            }
+                            state.activeCol = 0; // Reset col
+                        } else if (state.isolationMode === 'all') {
+                            // In all mode, Down arrow moves DOWN a PAGE
+                            if (state.activePage < maxPages - 1) {
+                                state.activePage++;
+                            }
+                            // Reset row/col for the new page
+                            state.activeRow = 0; 
+                            state.activeCol = 0;
+                        }
+                        break;
+                    case 'left':
+                        if (state.isolationMode === 'single' || state.isolationMode === 'column') {
+                            // In single/col mode, Left arrow moves LEFT
+                            const maxPages = data.length;
+
+                            if (state.activeCol > 0) {
+                                // 1. Not at start of row -> just move left
+                                state.activeCol--;
+                            } else {
+                                // 2. At start of row -> try to move to prev row
+                                if (state.activeRow > 0) {
+                                    // 2a. Not at start of page -> move to prev row, last col
+                                    state.activeRow--;
+                                    const prevRowMaxCols = data[state.activePage]?.[state.activeRow]?.letters.length || 0;
+                                    state.activeCol = Math.max(0, prevRowMaxCols - 1);
+                                } else {
+                                    // 3. At start of page -> try to move to prev page
+                                    if (state.activePage > 0) {
+                                        // 3a. Not at first page -> move to prev page, last row, last col
+                                        state.activePage--;
+                                        const prevPageMaxRows = data[state.activePage]?.length || 0;
+                                        state.activeRow = Math.max(0, prevPageMaxRows - 1);
+                                        const prevRowMaxCols = data[state.activePage]?.[state.activeRow]?.letters.length || 0;
+                                        state.activeCol = Math.max(0, prevRowMaxCols - 1);
+                                    } else {
+                                        // 4. AT START OF EVERYTHING -> DO NOTHING
+                                        // state remains (0, 0, 0)
+                                    }
+                                }
+                            }
+                        } else {
+                            // In all/row mode, Left arrow moves UP a ROW, wrapping pages
+                            state.activeRow--;
+                            if (state.activeRow < 0) {
+                                // At top row, try to move up a page
+                                if (state.activePage > 0) {
+                                    state.activePage--;
+                                    state.activeRow = data[state.activePage].length - 1; // Go to last row
+                                } else {
+                                    state.activeRow = 0; // Stop at top
+                                }
+                            }
+                            state.activeCol = 0; // Reset col when changing row
+                        }
+                        break;
+                    case 'right':
+                        if (state.isolationMode === 'single' || state.isolationMode === 'column') {
+                            // In single/col mode, Right arrow moves RIGHT
+                            const maxPages = data.length;
+                            const rowsOnCurrentPage = data[state.activePage] || [];
+                            const maxRows = rowsOnCurrentPage.length;
+                            const maxCols = rowsOnCurrentPage[state.activeRow]?.letters.length || 0;
+
+                            if (state.activeCol < maxCols - 1) {
+                                // 1. Not at end of row -> just move right
+                                state.activeCol++;
+                            } else {
+                                // 2. At end of row -> try to move to next row
+                                if (state.activeRow < maxRows - 1) {
+                                    // 2a. Not at end of page -> move to next row, first col
+                                    state.activeRow++;
+                                    state.activeCol = 0;
+                                } else {
+                                    // 3. At end of page -> try to move to next page
+                                    if (state.activePage < maxPages - 1) {
+                                        // 3a. Not at last page -> move to next page, first row, first col
+                                        state.activePage++;
+                                        state.activeRow = 0;
+                                        state.activeCol = 0;
+                                    } else {
+                                        // 4. AT END OF EVERYTHING -> DO NOTHING
+                                        // state remains (maxPage, maxRow, maxCol)
+                                        // No change to state.activePage, state.activeRow, state.activeCol
+                                    }
+                                }
+                            }
+                        } else {
+                            // In all/row mode, Right arrow moves DOWN a ROW, wrapping pages
+                            const rowsOnCurrentPage = data[state.activePage] || [];
+                            const maxRows = rowsOnCurrentPage.length;
+                            state.activeRow++;
+                            if (state.activeRow >= maxRows) {
+                                // At bottom row, try to move down a page
+                                if (state.activePage < maxPages - 1) {
+                                    state.activePage++;
+                                    state.activeRow = 0; // Go to first row
+                                } else {
+                                    state.activeRow = maxRows - 1; // Stop at bottom
+                                }
+                            }
+                            state.activeCol = 0; // Reset col
+                        }
+                        break;
+                }
+                
+                // Ensure new col index is valid for the new row
+                const newMaxCols = data[state.activePage]?.[state.activeRow]?.letters.length || 0;
+                if (state.activeCol >= newMaxCols) {
+                    state.activeCol = newMaxCols - 1;
+                }
+
+            } else {
+                // --- Non-Paged Chart Navigation (ETDRS) ---
+                const maxRows = data.length;
+                const maxCols = data[state.activeRow]?.letters.length || 0;
+
+                switch(direction) {
+                    case 'up':
+                        state.activeRow = Math.max(0, state.activeRow - 1);
+                        break;
+                    case 'down':
+                        state.activeRow = Math.min(maxRows - 1, state.activeRow + 1);
+                        break;
+                    case 'left':
+                        state.activeCol = Math.max(0, state.activeCol - 1);
+                        break;
+                    case 'right':
+                        state.activeCol = Math.min(maxCols - 1, state.activeCol + 1);
+                        break;
+                }
+                
+                // Ensure new col index is valid for the new row
+                const newMaxCols = data[state.activeRow]?.letters.length || 0;
+                if (state.activeCol >= newMaxCols) {
+                    state.activeCol = newMaxCols - 1;
+                }
+            }
+            
+            rerenderCurrentChart();
+        }
+        
+        /**
+         * Changes the size of the cross-cyl pattern
+         * @param {number} delta - 1 to increase, -1 to decrease
+         */
+        function changeCrossCylSize(delta) {
+            if (state.activeChart !== 'cross-cyl') return;
+            
+            state.crossCylScale += (delta * 0.1); // Change scale by 10%
+            
+            if (state.crossCylScale < 0.2) state.crossCylScale = 0.2; // Min 20%
+            if (state.crossCylScale > 3.0) state.crossCylScale = 3.0; // Max 300%
+            
+            renderCrossCyl();
+        }
+        
+        /**
+         * NEW: Changes the size of the duochrome numbers
+         * @param {number} delta - 1 to increase, -1 to decrease
+         */
+        function changeDuochromeSize(delta) {
+            if (state.activeChart !== 'duochrome') return;
+            
+            state.duochromeSizeIndex += delta;
+            
+            // Clamp value between 0 and 2
+            if (state.duochromeSizeIndex < 0) state.duochromeSizeIndex = 0;
+            if (state.duochromeSizeIndex > 2) state.duochromeSizeIndex = 2;
+            
+            renderDuochrome();
+        }
+        
+        /**
+         * Helper to rerender the active chart
+         */
+        function rerenderCurrentChart() {
+            switch(state.activeChart) {
+                case 'snellen': renderChart('snellen', state.snellenData, 'letter', true); break;
+                case 'etdrs': renderChart('etdrs', state.etdrsData, 'letter', false); break;
+                case 'pictures': renderChart('pictures', state.pictureData, 'icon', true); break;
+                case 'numbers': renderChart('numbers', state.numberData, 'letter', true); break;
+                case 'cross-cyl': renderCrossCyl(); break;
+                case 'duochrome': renderDuochrome(); break;
+            }
+        }
+        
+        // --- NEW: SETTINGS MODAL FUNCTIONS ---
+        
+        function openSettings() {
+            // Populate modal with current settings
+            if (state.distanceUnits === 'meters') {
+                distanceInput.value = state.viewingDistance;
+                unitsInput.value = 'meters';
+            } else {
+                // Convert stored meters to feet for display
+                distanceInput.value = (state.viewingDistance / 0.3048).toFixed(1);
+                unitsInput.value = 'feet';
+            }
+            settingsModal.style.display = 'block';
+        }
+        
+        function closeSettings() {
+            settingsModal.style.display = 'none';
+        }
+        
+        function saveSettings() {
+            const distance = parseFloat(distanceInput.value);
+            const units = unitsInput.value;
+            
+            if (isNaN(distance) || distance <= 0) {
+                alert("Please enter a valid, positive distance.");
+                return;
+            }
+            
+            // Store units
+            state.distanceUnits = units;
+            
+            // Convert to meters for internal storage
+            if (units === 'feet') {
+                state.viewingDistance = distance * 0.3048;
+            } else {
+                state.viewingDistance = distance;
+            }
+            
+            // Calculate new scale factor (relative to 6m standard)
+            const scaleFactor = state.viewingDistance / 6.0;
+            
+            // Update the CSS custom property
+            document.documentElement.style.setProperty('--chart-scale-factor', scaleFactor);
+            
+            // Close modal and re-render
+            closeSettings();
+            rerenderCurrentChart();
+        }
+        
+
+        // --- KEYPRESS EVENT LISTENER ---
+        document.addEventListener('keydown', (e) => {
+            // Prevent default browser actions for Space, Arrows, etc.
+            e.preventDefault();
+            
+            const key = e.key.toUpperCase();
+            
+            // --- NEW: Handle Modal Hotkey FIRST ---
+            if (e.shiftKey && key === 'X') {
+                openSettings();
+                return;
+            }
+            
+            // Close modal with Escape
+            if (key === 'ESCAPE' && settingsModal.style.display === 'block') {
+                closeSettings();
+                return;
+            }
+            
+            // If modal is open, don't process other keys
+            if (settingsModal.style.display === 'block') {
+                return;
+            }
+
+            switch (key) {
+                // Chart selection
+                case 'S': showChart('snellen'); break;
+                case 'Q': showChart('etdrs'); break;
+                case 'P': showChart('pictures'); break;
+                case 'N': showChart('numbers'); break;
+                case 'D': showChart('duochrome'); break;
+                case 'C': showChart('cross-cyl'); break;
+                case 'M': showChart('maddox-rod'); break; // Corrected from 'maddox'
+                case 'Z': location.reload(); break; // Changed to refresh the page
+                case 'ESCAPE': showChart('welcome'); break; // Back to welcome
+
+                // Randomization
+                case 'R': toggleRandom(); break;
+                case ' ': randomizeChart(); break; // Spacebar
+
+                // Isolation
+                case 'A': setIsolationMode('all'); break;
+                case 'H': setIsolationMode('row'); break;
+                case 'V': setIsolationMode('column'); break;
+                case 'I': setIsolationMode('single'); break;
+                
+                // Navigation
+                case 'ARROWUP':
+                    if (state.activeChart === 'cross-cyl') {
+                        changeCrossCylSize(1); // Increase size
+                    } else if (state.activeChart === 'duochrome') { // NEW
+                        changeDuochromeSize(1); // Increase size
+                    } else {
+                        navigate('up');
+                    }
+                    break;
+                case 'ARROWDOWN':
+                    if (state.activeChart === 'cross-cyl') {
+                        changeCrossCylSize(-1); // Decrease size
+                    } else if (state.activeChart === 'duochrome') { // NEW
+                        changeDuochromeSize(-1); // Decrease size
+                    } else {
+                        navigate('down');
+                    }
+                    break;
+                case 'ARROWLEFT': navigate('left'); break;
+                case 'ARROWRIGHT': navigate('right'); break;
+                
+            }
+        });
+        
+        // Handle window resizing, especially for Cross-Cyl
+        window.addEventListener('resize', () => {
+            if (state.activeChart === 'cross-cyl') {
+                renderCrossCyl();
+            }
+        });
+        
+        // --- NEW: SETTINGS MODAL LISTENERS ---
+        document.getElementById('settings-save').addEventListener('click', saveSettings);
+        document.getElementById('settings-close').addEventListener('click', closeSettings);
+        
+        // Allow clicking overlay to close
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target.id === 'settings-modal') {
+                closeSettings();
+            }
+        });
+
+        // --- INITIALIZATION ---
+        // Load settings from localStorage if they exist
+        const savedDistance = localStorage.getItem('chartDistance');
+        const savedUnits = localStorage.getItem('chartUnits');
+        
+        if (savedDistance) {
+            distanceInput.value = savedDistance;
+            unitsInput.value = savedUnits || 'meters';
+            saveSettings(); // Apply saved settings on load
+        }
+        
+        // Start on the welcome screen
+        showChart('welcome');
+
+    </script>
+</body>
+</html>
